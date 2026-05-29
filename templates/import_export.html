@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>导入导出 - 外联教授数据库管理系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-title">📊 外联数据库</div>
+            <ul class="sidebar-menu">
+                <li @click="goPage('')"><span>📈</span> 仪表盘</li>
+                <li @click="goPage('professors')"><span>👨‍🏫</span> 教授管理</li>
+                <li @click="goPage('conferences')"><span>📅</span> 会议管理</li>
+                <li @click="goPage('cooperations')"><span>🤝</span> 合作记录</li>
+                <li @click="goPage('directions')"><span>🏷️</span> 研究方向</li>
+                <li class="active"><span>📂</span> 导入导出</li>
+            </ul>
+        </div>
+        <div class="main-area">
+            <div class="header">
+                <div class="header-left">导入导出</div>
+                <div class="header-right">
+                    <span>管理员</span>
+                    <el-button size="small" type="danger" plain @click="logout">退出登录</el-button>
+                </div>
+            </div>
+            <div class="content">
+                <el-row :gutter="24">
+                    <el-col :span="12">
+                        <el-card shadow="never">
+                            <template #header><span style="font-size:16px;font-weight:600">📤 导出数据</span></template>
+                            <el-form label-width="100px">
+                                <el-form-item label="数据类型">
+                                    <el-select v-model="exportType" style="width:100%">
+                                        <el-option label="教授信息" value="professors" />
+                                        <el-option label="会议信息" value="conferences" />
+                                        <el-option label="合作记录" value="cooperations" />
+                                    </el-select>
+                                </el-form-item>
+                                <el-form-item label="导出格式">
+                                    <el-radio-group v-model="exportFormat">
+                                        <el-radio value="json">JSON</el-radio>
+                                        <el-radio value="csv">CSV</el-radio>
+                                        <el-radio value="xlsx">Excel (.xlsx)</el-radio>
+                                    </el-radio-group>
+                                </el-form-item>
+                                <el-form-item>
+                                    <el-button type="primary" size="large" @click="doExport" :loading="exporting" style="width:100%">导出</el-button>
+                                </el-form-item>
+                            </el-form>
+                        </el-card>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-card shadow="never">
+                            <template #header><span style="font-size:16px;font-weight:600">📥 导入数据</span></template>
+                            <el-form label-width="100px">
+                                <el-form-item label="数据类型">
+                                    <el-select v-model="importType" style="width:100%">
+                                        <el-option label="教授信息" value="professors" />
+                                        <el-option label="会议信息" value="conferences" />
+                                        <el-option label="合作记录" value="cooperations" />
+                                    </el-select>
+                                </el-form-item>
+                                <el-form-item label="选择文件">
+                                    <el-upload ref="uploadRef" :auto-upload="false" :show-file-list="true" :limit="1" accept=".json,.csv,.xlsx" :on-change="onFileChange" drag>
+                                        <template #default>
+                                            <div style="padding:20px;text-align:center">
+                                                <span style="font-size:40px;color:#c0c4cc">📤</span>
+                                                <p style="margin:8px 0;font-size:14px;color:#606266">拖拽文件到此处，或点击选择</p>
+                                                <p style="font-size:12px;color:#909399">支持 JSON / CSV / Excel (.xlsx) 格式</p>
+                                            </div>
+                                        </template>
+                                    </el-upload>
+                                </el-form-item>
+                                <el-form-item>
+                                    <el-button type="success" size="large" @click="doImport" :loading="importing" :disabled="!importFile" style="width:100%">导入</el-button>
+                                </el-form-item>
+                            </el-form>
+                            <div v-if="importResult" :style="{marginTop:'12px',padding:'12px',borderRadius:'6px',background: importResult.success ? '#f0f9eb' : '#fef0f0', color: importResult.success ? '#67c23a' : '#f56c6c'}">
+                                <p><strong>{{ importResult.success ? '✅ 导入成功' : '❌ 导入失败' }}</strong></p>
+                                <p>{{ importResult.message }}</p>
+                                <p v-if="importResult.errors && importResult.errors.length > 0">
+                                    <el-collapse>
+                                        <el-collapse-item title="查看错误详情">
+                                            <div v-for="err in importResult.errors" style="font-size:12px;color:#f56c6c;margin:4px 0">{{ err }}</div>
+                                        </el-collapse-item>
+                                    </el-collapse>
+                                </p>
+                            </div>
+                        </el-card>
+                    </el-col>
+                </el-row>
+                <el-card shadow="never" style="margin-top:16px">
+                    <template #header>📋 导入模板说明</template>
+                    <el-table :data="templates" stripe>
+                        <el-table-column prop="type" label="数据类型" width="120" />
+                        <el-table-column prop="fields" label="支持的字段" min-width="300" />
+                        <el-table-column prop="note" label="说明" min-width="200" />
+                    </el-table>
+                </el-card>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/@element-plus/icons-vue"></script>
+<script src="https://unpkg.com/element-plus/dist/index.full.min.js"></script>
+<script src="/static/app.js"></script>
+<script>
+    const { createApp, ref, h } = Vue;
+    const app = createApp({
+        setup() {
+            if (!checkAuth()) return {};
+            const exportType = ref('professors');
+            const exportFormat = ref('xlsx');
+            const exporting = ref(false);
+            const importType = ref('professors');
+            const importFile = ref(null);
+            const importing = ref(false);
+            const importResult = ref(null);
+            const uploadRef = ref(null);
+
+            const templates = [
+                { type: '教授信息', fields: 'name(姓名)*, title(职称), university(学校), email(邮箱), website(个人主页), location(所在地), qs_ranking(QS排名), research_direction(研究方向), research_keywords(研究关键词), notes(备注)', note: 'name 为必填，支持中文或英文列名' },
+                { type: '会议信息', fields: 'name(会议名称)*, year(年份), location(举办地点), field(领域), description(描述), total_sessions(分会场数), notes(备注)', note: 'name 为必填' },
+                { type: '合作记录', fields: 'professor_id(教授ID)*, conference_id(会议ID)*, sub_conference_id(分会场ID), cooperation_type(合作类型)*, notes(备注)', note: '教授ID和会议ID为必填，合作类型: keynote/committee/session_chair/general_chair/editor/other' },
+            ];
+
+            async function doExport() {
+                exporting.value = true;
+                try {
+                    const token = getToken();
+                    const response = await fetch(`/api/import_export/export/${exportType.value}?format=${exportFormat.value}`, {
+                        headers: { 'Authorization': `Bearer ${token}` },
+                    });
+                    if (!response.ok) throw new Error('导出失败');
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${exportType.value}.${exportFormat.value}`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    ElMessage.success('导出成功');
+                } catch (e) { ElMessage.error(e.message); }
+                exporting.value = false;
+            }
+
+            function onFileChange(uploadFile) {
+                importFile.value = uploadFile.raw;
+            }
+
+            async function doImport() {
+                if (!importFile.value) { ElMessage.warning('请先选择文件'); return; }
+                importing.value = true;
+                importResult.value = null;
+                try {
+                    const formData = new FormData();
+                    formData.append('file', importFile.value);
+                    const token = getToken();
+                    const response = await fetch(`/api/import_export/import/${importType.value}`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData,
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.detail || '导入失败');
+                    importResult.value = result;
+                    if (result.success) ElMessage.success(result.message);
+                } catch (e) {
+                    importResult.value = { success: false, message: e.message, imported_count: 0, errors: [] };
+                    ElMessage.error(e.message);
+                }
+                importing.value = false;
+            }
+
+            function goPage(name) { window.location.href = name ? `/pages/${name}` : '/'; }
+            function logout() { clearToken(); window.location.href = '/login'; }
+
+            return { exportType, exportFormat, exporting, importType, importFile, importing, importResult, uploadRef, templates, doExport, onFileChange, doImport, goPage, logout };
+        }
+    });
+    app.use(ElementPlus);
+    app.mount('#app');
+</script>
+</body>
+</html>

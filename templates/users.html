@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户管理 - 外联教授数据库管理系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-title">📊 外联数据库</div>
+            <ul class="sidebar-menu">
+                <li @click="goPage('')"><span>📈</span> 仪表盘</li>
+                <li @click="goPage('professors')"><span>👨‍🏫</span> 教授管理</li>
+                <li @click="goPage('conferences')"><span>📅</span> 会议管理</li>
+                <li @click="goPage('cooperations')"><span>🤝</span> 合作记录</li>
+                <li @click="goPage('directions')"><span>🏷️</span> 研究方向</li>
+                <li @click="goPage('import_export')"><span>📂</span> 导入导出</li>
+                <li class="active"><span>👥</span> 用户管理</li>
+                <li @click="goPage('audit')"><span>📋</span> 操作日志</li>
+            </ul>
+        </div>
+        <div class="main-area">
+            <div class="header">
+                <div class="header-left">用户管理</div>
+                <div class="header-right">
+                    <span id="headerUsername">管理员</span>
+                    <el-button size="small" type="danger" plain @click="logout">退出登录</el-button>
+                </div>
+            </div>
+            <div class="content">
+                <el-card shadow="never">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                        <span style="font-size:14px;color:#606266">管理系统用户账号，共 {{ users.length }} 个用户</span>
+                        <el-button type="primary" @click="showAdd = true">新增用户</el-button>
+                    </div>
+                    <el-table :data="users" stripe v-loading="loading">
+                        <el-table-column prop="id" label="ID" width="60" />
+                        <el-table-column prop="username" label="用户名" min-width="120" />
+                        <el-table-column prop="display_name" label="显示名称" min-width="120" />
+                        <el-table-column prop="role" label="角色" width="80">
+                            <template #default="{row}">
+                                <el-tag :type="row.role === 'admin' ? 'danger' : 'primary'" size="small">{{ row.role === 'admin' ? '管理员' : '普通用户' }}</el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column prop="is_active" label="状态" width="80">
+                            <template #default="{row}">
+                                <el-tag :type="row.is_active ? 'success' : 'info'" size="small">{{ row.is_active ? '启用' : '禁用' }}</el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column prop="created_at" label="创建时间" width="160">
+                            <template #default="{row}">{{ formatDate(row.created_at) }}</template>
+                        </el-table-column>
+                        <el-table-column label="操作" width="240" fixed="right">
+                            <template #default="{row}">
+                                <el-button size="small" type="primary" link @click="editUser(row)">编辑</el-button>
+                                <el-button size="small" type="warning" link @click="resetPwd(row)">重置密码</el-button>
+                                <el-button v-if="row.username !== 'admin'" size="small" type="danger" link @click="deleteUser(row)">删除</el-button>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                </el-card>
+            </div>
+        </div>
+    </div>
+
+    <el-dialog v-model="showAdd" title="新增用户" width="420px">
+        <el-form :model="addForm" label-width="80px">
+            <el-form-item label="用户名">
+                <el-input v-model="addForm.username" placeholder="登录用用户名" />
+            </el-form-item>
+            <el-form-item label="显示名称">
+                <el-input v-model="addForm.display_name" placeholder="显示名称（可选）" />
+            </el-form-item>
+            <el-form-item label="密码">
+                <el-input v-model="addForm.password" type="password" placeholder="初始密码" show-password />
+            </el-form-item>
+            <el-form-item label="角色">
+                <el-select v-model="addForm.role">
+                    <el-option label="普通用户" value="user" />
+                    <el-option label="管理员" value="admin" />
+                </el-select>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="showAdd = false">取消</el-button>
+            <el-button type="primary" :loading="saving" @click="doAdd">确定新增</el-button>
+        </template>
+    </el-dialog>
+
+    <el-dialog v-model="showEdit" title="编辑用户" width="420px">
+        <el-form :model="editForm" label-width="80px">
+            <el-form-item label="显示名称">
+                <el-input v-model="editForm.display_name" />
+            </el-form-item>
+            <el-form-item label="角色">
+                <el-select v-model="editForm.role">
+                    <el-option label="普通用户" value="user" />
+                    <el-option label="管理员" value="admin" />
+                </el-select>
+            </el-form-item>
+            <el-form-item label="状态">
+                <el-switch v-model="editForm.is_active" active-text="启用" inactive-text="禁用" />
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="showEdit = false">取消</el-button>
+            <el-button type="primary" :loading="saving" @click="doEdit">保存</el-button>
+        </template>
+    </el-dialog>
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/element-plus/dist/index.full.min.js"></script>
+<script src="/static/app.js"></script>
+<script>
+    const { createApp, ref, onMounted } = Vue;
+    const app = createApp({
+        setup() {
+            if (!checkAuth()) return {};
+            const users = ref([]);
+            const loading = ref(false);
+            const saving = ref(false);
+            const showAdd = ref(false);
+            const showEdit = ref(false);
+            const addForm = ref({ username: '', display_name: '', password: '123456', role: 'user' });
+            const editForm = ref({ id: null, display_name: '', role: 'user', is_active: true });
+
+            async function loadUsers() {
+                loading.value = true;
+                try { users.value = await getApi('/users'); } catch (e) { console.error(e); }
+                loading.value = false;
+            }
+
+            async function doAdd() {
+                if (!addForm.value.username || !addForm.value.password) {
+                    ElMessage.warning('请填写用户名和密码');
+                    return;
+                }
+                saving.value = true;
+                try {
+                    await postApi('/users', addForm.value);
+                    ElMessage.success('新增用户成功');
+                    showAdd.value = false;
+                    addForm.value = { username: '', display_name: '', password: '123456', role: 'user' };
+                    loadUsers();
+                } catch (e) { console.error(e); }
+                saving.value = false;
+            }
+
+            function editUser(row) {
+                editForm.value = {
+                    id: row.id,
+                    display_name: row.display_name,
+                    role: row.role,
+                    is_active: !!row.is_active,
+                };
+                showEdit.value = true;
+            }
+
+            async function doEdit() {
+                saving.value = true;
+                try {
+                    await putApi(`/users/${editForm.value.id}`, {
+                        display_name: editForm.value.display_name,
+                        role: editForm.value.role,
+                        is_active: editForm.value.is_active,
+                    });
+                    ElMessage.success('更新成功');
+                    showEdit.value = false;
+                    loadUsers();
+                } catch (e) { console.error(e); }
+                saving.value = false;
+            }
+
+            async function resetPwd(row) {
+                const { value } = await ElMessageBox.prompt(`请输入「${row.username}」的新密码`, '重置密码', {
+                    inputType: 'password', confirmButtonText: '确定', cancelButtonText: '取消',
+                    inputValidator: v => v.length >= 4 ? true : '密码至少4位',
+                });
+                try {
+                    await postApi(`/users/${row.id}/reset-password`, { new_password: value });
+                    ElMessage.success('密码已重置');
+                } catch (e) { console.error(e); }
+            }
+
+            async function deleteUser(row) {
+                try {
+                    await ElMessageBox.confirm(`确定删除用户「${row.username}」？`, '确认删除', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' });
+                    await deleteApi(`/users/${row.id}`);
+                    ElMessage.success('已删除');
+                    loadUsers();
+                } catch (e) {}
+            }
+
+            function goPage(name) { window.location.href = name ? `/pages/${name}` : '/'; }
+            function logout() { clearToken(); window.location.href = '/login'; }
+
+            onMounted(() => {
+                loadUsers();
+                try {
+                    const payload = JSON.parse(atob(getToken().split('.')[1]));
+                    document.getElementById('headerUsername').textContent = payload.display_name || payload.sub;
+                } catch (e) {}
+            });
+
+            return { users, loading, saving, showAdd, showEdit, addForm, editForm, doAdd, editUser, doEdit, resetPwd, deleteUser, goPage, logout, formatDate };
+        }
+    });
+    app.use(ElementPlus);
+    app.mount('#app');
+</script>
+</body>
+</html>

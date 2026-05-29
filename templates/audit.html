@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>操作日志 - 外联教授数据库管理系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-title">📊 外联数据库</div>
+            <ul class="sidebar-menu">
+                <li @click="goPage('')"><span>📈</span> 仪表盘</li>
+                <li @click="goPage('professors')"><span>👨‍🏫</span> 教授管理</li>
+                <li @click="goPage('conferences')"><span>📅</span> 会议管理</li>
+                <li @click="goPage('cooperations')"><span>🤝</span> 合作记录</li>
+                <li @click="goPage('directions')"><span>🏷️</span> 研究方向</li>
+                <li @click="goPage('import_export')"><span>📂</span> 导入导出</li>
+                <li @click="goPage('users')"><span>👥</span> 用户管理</li>
+                <li class="active"><span>📋</span> 操作日志</li>
+            </ul>
+        </div>
+        <div class="main-area">
+            <div class="header">
+                <div class="header-left">操作日志</div>
+                <div class="header-right">
+                    <span id="headerUsername">管理员</span>
+                    <el-button size="small" type="danger" plain @click="logout">退出登录</el-button>
+                </div>
+            </div>
+            <div class="content">
+                <el-card shadow="never">
+                    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+                        <el-select v-model="filterAction" placeholder="操作类型" clearable style="width:140px">
+                            <el-option label="创建" value="create" />
+                            <el-option label="修改" value="update" />
+                            <el-option label="删除" value="delete" />
+                        </el-select>
+                        <el-select v-model="filterTarget" placeholder="目标类型" clearable style="width:140px">
+                            <el-option label="教授" value="professor" />
+                            <el-option label="会议" value="conference" />
+                            <el-option label="分会场" value="subconference" />
+                            <el-option label="合作记录" value="cooperation" />
+                            <el-option label="研究方向" value="direction" />
+                        </el-select>
+                        <el-input v-model="filterUser" placeholder="用户名" clearable style="width:140px" />
+                        <el-button type="primary" @click="loadLogs">筛选</el-button>
+                        <el-button @click="resetFilter">重置</el-button>
+                    </div>
+                    <el-table :data="logs" stripe v-loading="loading">
+                        <el-table-column prop="id" label="#" width="60" />
+                        <el-table-column prop="username" label="用户" width="100" />
+                        <el-table-column prop="action" label="操作" width="80">
+                            <template #default="{row}">
+                                <el-tag v-if="row.action === 'create'" type="success" size="small">创建</el-tag>
+                                <el-tag v-else-if="row.action === 'update'" type="warning" size="small">修改</el-tag>
+                                <el-tag v-else-if="row.action === 'delete'" type="danger" size="small">删除</el-tag>
+                                <span v-else>{{ row.action }}</span>
+                            </template>
+                        </el-table-column>
+                        <el-table-column prop="target_type" label="目标类型" width="100">
+                            <template #default="{row}">{{ targetLabels[row.target_type] || row.target_type }}</template>
+                        </el-table-column>
+                        <el-table-column prop="target_id" label="目标ID" width="80" />
+                        <el-table-column prop="details" label="详情" min-width="200">
+                            <template #default="{row}">
+                                <span style="font-size:13px;color:#606266">{{ row.details || '-' }}</span>
+                            </template>
+                        </el-table-column>
+                        <el-table-column prop="created_at" label="时间" width="170">
+                            <template #default="{row}">{{ formatDateTime(row.created_at) }}</template>
+                        </el-table-column>
+                    </el-table>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px">
+                        <span style="font-size:13px;color:#909399">共 {{ total }} 条记录</span>
+                        <el-pagination v-if="total > pageSize" v-model:current-page="page" :page-size="pageSize" :total="total" layout="prev, pager, next" @current-change="loadLogs" />
+                    </div>
+                </el-card>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/element-plus/dist/index.full.min.js"></script>
+<script src="/static/app.js"></script>
+<script>
+    const { createApp, ref, onMounted } = Vue;
+    const app = createApp({
+        setup() {
+            if (!checkAuth()) return {};
+            const logs = ref([]);
+            const total = ref(0);
+            const loading = ref(false);
+            const page = ref(1);
+            const pageSize = 50;
+            const filterAction = ref('');
+            const filterTarget = ref('');
+            const filterUser = ref('');
+
+            const targetLabels = { professor: '教授', conference: '会议', subconference: '分会场', cooperation: '合作记录', direction: '研究方向' };
+
+            async function loadLogs() {
+                loading.value = true;
+                try {
+                    const params = { page: page.value, page_size: pageSize };
+                    if (filterAction.value) params.action = filterAction.value;
+                    if (filterTarget.value) params.target_type = filterTarget.value;
+                    if (filterUser.value) params.username = filterUser.value;
+                    const res = await getApi('/audit', params);
+                    logs.value = res.items;
+                    total.value = res.total;
+                } catch (e) { console.error(e); }
+                loading.value = false;
+            }
+
+            function resetFilter() {
+                filterAction.value = '';
+                filterTarget.value = '';
+                filterUser.value = '';
+                page.value = 1;
+                loadLogs();
+            }
+
+            function formatDateTime(d) {
+                if (!d) return '';
+                const dt = new Date(d);
+                return dt.toLocaleString('zh-CN');
+            }
+
+            function goPage(name) { window.location.href = name ? `/pages/${name}` : '/'; }
+            function logout() { clearToken(); window.location.href = '/login'; }
+
+            onMounted(() => {
+                loadLogs();
+                try {
+                    const payload = JSON.parse(atob(getToken().split('.')[1]));
+                    document.getElementById('headerUsername').textContent = payload.display_name || payload.sub;
+                } catch (e) {}
+            });
+
+            return { logs, total, loading, page, pageSize, filterAction, filterTarget, filterUser, loadLogs, resetFilter, goPage, logout, formatDateTime, targetLabels };
+        }
+    });
+    app.use(ElementPlus);
+    app.mount('#app');
+</script>
+</body>
+</html>

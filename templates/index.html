@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>仪表盘 - 外联教授数据库管理系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Helvetica Neue', 'PingFang SC', sans-serif; background: #f0f2f5; }
+        .app-container { display: flex; min-height: 100vh; }
+        .sidebar { width: 220px; background: #304156; color: #fff; flex-shrink: 0; }
+        .sidebar-title { padding: 20px; font-size: 18px; font-weight: 600; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .sidebar-menu { list-style: none; padding: 8px 0; }
+        .sidebar-menu li { padding: 14px 24px; cursor: pointer; transition: .2s; display: flex; align-items: center; gap: 8px; font-size: 14px; color: rgba(255,255,255,0.7); }
+        .sidebar-menu li:hover, .sidebar-menu li.active { background: rgba(255,255,255,0.08); color: #fff; }
+        .sidebar-menu li.active { border-right: 3px solid #409eff; }
+        .main-area { flex: 1; display: flex; flex-direction: column; }
+        .header { height: 60px; background: #fff; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .header-left { font-size: 16px; font-weight: 600; color: #303133; }
+        .header-right { display: flex; align-items: center; gap: 16px; font-size: 14px; color: #606266; }
+        .content { padding: 20px; flex: 1; }
+        a { text-decoration: none; color: inherit; }
+        .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .stat-card .label { font-size: 14px; color: #909399; margin-bottom: 8px; }
+        .stat-card .value { font-size: 28px; font-weight: 700; color: #303133; }
+        .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+        .chart-box { background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .chart-box h3 { font-size: 14px; color: #606266; margin-bottom: 12px; }
+        .chart-container { width: 100%; height: 300px; }
+        .full-chart { grid-column: 1 / -1; }
+        @media (max-width: 768px) { .chart-row { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-title">📊 外联数据库</div>
+            <ul class="sidebar-menu">
+                <li :class="{active: page === 'dashboard'}" @click="goPage('dashboard')"><span>📈</span> 仪表盘</li>
+                <li :class="{active: page === 'professors'}" @click="goPage('professors')"><span>👨‍🏫</span> 教授管理</li>
+                <li :class="{active: page === 'conferences'}" @click="goPage('conferences')"><span>📅</span> 会议管理</li>
+                <li :class="{active: page === 'cooperations'}" @click="goPage('cooperations')"><span>🤝</span> 合作记录</li>
+                <li :class="{active: page === 'directions'}" @click="goPage('directions')"><span>🏷️</span> 研究方向</li>
+                <li :class="{active: page === 'import_export'}" @click="goPage('import_export')"><span>📂</span> 导入导出</li>
+                <li v-if="userRole === 'admin'" :class="{active: page === 'users'}" @click="goPage('users')"><span>👥</span> 用户管理</li>
+                <li v-if="userRole === 'admin'" :class="{active: page === 'audit'}" @click="goPage('audit')"><span>📋</span> 操作日志</li>
+            </ul>
+        </div>
+        <div class="main-area">
+            <div class="header">
+                <div class="header-left">{{ pageTitle }}</div>
+                <div class="header-right">
+                    <span>{{ userDisplayName }}</span>
+                    <el-button size="small" type="danger" plain @click="logout">退出登录</el-button>
+                </div>
+            </div>
+            <div class="content" v-if="page === 'dashboard'">
+                <div class="stat-cards">
+                    <div class="stat-card"><div class="label">教授总数</div><div class="value" style="color:#409eff">{{ stats.total_professors }}</div></div>
+                    <div class="stat-card"><div class="label">会议总数</div><div class="value" style="color:#67c23a">{{ stats.total_conferences }}</div></div>
+                    <div class="stat-card"><div class="label">合作记录</div><div class="value" style="color:#e6a23c">{{ stats.total_cooperations }}</div></div>
+                    <div class="stat-card"><div class="label">分会场总数</div><div class="value" style="color:#909399">{{ stats.total_subconferences }}</div></div>
+                    <div class="stat-card"><div class="label">未分配分会场</div><div class="value" style="color:#f56c6c">{{ stats.unassigned_subconferences }}</div></div>
+                </div>
+                <div class="chart-row">
+                    <div class="chart-box"><h3>研究方向分布</h3><div id="directionChart" class="chart-container"></div></div>
+                    <div class="chart-box"><h3>合作类型分布</h3><div id="typeChart" class="chart-container"></div></div>
+                </div>
+                <div class="chart-row">
+                    <div class="chart-box full-chart"><h3>教授合作次数排行 (Top 10)</h3><div id="topChart" class="chart-container"></div></div>
+                </div>
+                <div class="chart-row">
+                    <div class="chart-box full-chart"><h3>会议分会场分配进度</h3><div id="progressChart" class="chart-container"></div></div>
+                </div>
+                <el-card v-if="userRole === 'admin'" shadow="never" style="margin-top:16px">
+                    <template #header>成员工作量统计</template>
+                    <el-table :data="workload" stripe size="small" v-loading="loadingWorkload">
+                        <el-table-column prop="display_name" label="成员" width="120" />
+                        <el-table-column prop="total_operations" label="总操作" width="80" />
+                        <el-table-column prop="professor_count" label="新增教授" width="100" />
+                        <el-table-column prop="conference_count" label="新增会议" width="100" />
+                        <el-table-column prop="cooperation_count" label="新增合作" width="100" />
+                        <el-table-column prop="create_count" label="创建" width="60" />
+                        <el-table-column prop="update_count" label="修改" width="60" />
+                        <el-table-column prop="delete_count" label="删除" width="60" />
+                    </el-table>
+                </el-card>
+            </div>
+            <div class="content" v-else>
+                <div style="text-align:center;padding:80px 0;color:#909399;font-size:16px">
+                    <p>正在加载 {{ pageTitle }}...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/element-plus/dist/index.full.min.js"></script>
+<script src="https://unpkg.com/echarts@5/dist/echarts.min.js"></script>
+<script src="/static/app.js"></script>
+<script>
+    const { createApp, ref, onMounted, nextTick, watch } = Vue;
+    const app = createApp({
+        setup() {
+            if (!checkAuth()) return {};
+            const page = ref('dashboard');
+            const stats = ref({});
+            const workload = ref([]);
+            const loadingWorkload = ref(false);
+            const pageTitle = ref('仪表盘');
+            let userRole = ref('user');
+            let userDisplayName = ref('用户');
+            try {
+                const payload = JSON.parse(atob(getToken().split('.')[1]));
+                userRole.value = payload.role || 'user';
+                userDisplayName.value = payload.display_name || payload.sub || '用户';
+            } catch (e) {}
+            const pageNames = { dashboard: '仪表盘', professors: '教授管理', conferences: '会议管理', cooperations: '合作记录', directions: '研究方向', import_export: '导入导出' };
+
+            let charts = {};
+
+            function initCharts() {
+                nextTick(() => {
+                    setTimeout(() => {
+                        renderDirectionChart();
+                        renderTypeChart();
+                        renderTopChart();
+                        renderProgressChart();
+                    }, 200);
+                });
+            }
+
+            function renderDirectionChart() {
+                const el = document.getElementById('directionChart');
+                if (!el) return;
+                const chart = echarts.init(el);
+                const data = stats.value.direction_distribution || [];
+                chart.setOption({
+                    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+                    series: [{
+                        type: 'pie', radius: ['30%', '60%'], center: ['50%', '55%'],
+                        data: data.map(d => ({ name: d.name || '未设置', value: d.value })),
+                        label: { formatter: '{b}\n{d}%', fontSize: 11 },
+                        itemStyle: { borderRadius: 6 },
+                    }],
+                });
+                chart.on('click', (params) => {
+                    window.location.href = `/pages/professors?direction=${encodeURIComponent(params.name)}`;
+                });
+                charts.direction = chart;
+            }
+
+            function renderTypeChart() {
+                const el = document.getElementById('typeChart');
+                if (!el) return;
+                const chart = echarts.init(el);
+                const data = stats.value.cooperation_type_distribution || [];
+                const labels = { keynote: '主讲嘉宾', committee: '程序委员会', session_chair: '分会主席', general_chair: '大会主席', editor: '论文集编辑', other: '其他' };
+                chart.setOption({
+                    tooltip: { trigger: 'item', formatter: '{b}: {c}' },
+                    series: [{
+                        type: 'pie', radius: ['30%', '60%'], center: ['50%', '55%'],
+                        data: data.map(d => ({ name: labels[d.name] || d.name, value: d.value })),
+                        label: { formatter: '{b}\n{d}%', fontSize: 11 },
+                        itemStyle: { borderRadius: 6 },
+                    }],
+                });
+                charts.type = chart;
+            }
+
+            function renderTopChart() {
+                const el = document.getElementById('topChart');
+                if (!el) return;
+                const chart = echarts.init(el);
+                const data = stats.value.top_professors || [];
+                chart.setOption({
+                    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                    xAxis: { type: 'value', name: '合作次数' },
+                    yAxis: { type: 'category', data: data.map(d => d.name).reverse(), axisLabel: { fontSize: 11 } },
+                    series: [{
+                        type: 'bar', data: data.map(d => d.count).reverse(),
+                        itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#409eff' }, { offset: 1, color: '#79bbff' }]) },
+                    }],
+                });
+                chart.on('click', (params) => {
+                    const idx = data.length - 1 - params.dataIndex;
+                    if (idx >= 0 && idx < data.length) {
+                        window.location.href = `/pages/professor_detail?id=${data[idx].id}`;
+                    }
+                });
+                charts.top = chart;
+            }
+
+            function renderProgressChart() {
+                const el = document.getElementById('progressChart');
+                if (!el) return;
+                const chart = echarts.init(el);
+                const data = stats.value.conference_progress || [];
+                chart.setOption({
+                    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                    legend: { data: ['已分配', '未分配'], bottom: 0 },
+                    xAxis: { type: 'category', data: data.map(d => d.name), axisLabel: { rotate: 20, fontSize: 11 } },
+                    yAxis: { type: 'value', name: '分会场数' },
+                    series: [
+                        { name: '已分配', type: 'bar', stack: 'total', data: data.map(d => d.assigned), itemStyle: { color: '#67c23a' } },
+                        { name: '未分配', type: 'bar', stack: 'total', data: data.map(d => d.total - d.assigned), itemStyle: { color: '#f56c6c' } },
+                    ],
+                });
+                chart.on('click', (params) => {
+                    const idx = params.dataIndex;
+                    if (idx >= 0 && idx < data.length) {
+                        window.location.href = `/pages/conference_detail?id=${data[idx].id}`;
+                    }
+                });
+                charts.progress = chart;
+            }
+
+            async function loadStats() {
+                try {
+                    stats.value = await getApi('/stats/dashboard');
+                    initCharts();
+                } catch (e) { console.error(e); }
+            }
+
+            async function loadWorkload() {
+                if (userRole.value !== 'admin') return;
+                loadingWorkload.value = true;
+                try {
+                    workload.value = await getApi('/stats/user-workload');
+                } catch (e) { console.error(e); }
+                loadingWorkload.value = false;
+            }
+
+            function goPage(name) {
+                if (name === 'dashboard') {
+                    page.value = 'dashboard';
+                    pageTitle.value = pageNames[name];
+                    loadStats();
+                } else {
+                    window.location.href = `/pages/${name}`;
+                }
+            }
+
+            function logout() {
+                clearToken();
+                ElMessage.success('已退出登录');
+                window.location.href = '/login';
+            }
+
+            onMounted(() => {
+                loadStats();
+                loadWorkload();
+            });
+
+            return { page, stats, workload, loadingWorkload, pageTitle, userRole, userDisplayName, goPage, logout };
+        }
+    });
+    app.use(ElementPlus);
+    app.mount('#app');
+</script>
+</body>
+</html>

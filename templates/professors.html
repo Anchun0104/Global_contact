@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教授管理 - 外联教授数据库管理系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-title">📊 外联数据库</div>
+            <ul class="sidebar-menu">
+                <li @click="goPage('')"><span>📈</span> 仪表盘</li>
+                <li class="active"><span>👨‍🏫</span> 教授管理</li>
+                <li @click="goPage('conferences')"><span>📅</span> 会议管理</li>
+                <li @click="goPage('cooperations')"><span>🤝</span> 合作记录</li>
+                <li @click="goPage('directions')"><span>🏷️</span> 研究方向</li>
+                <li @click="goPage('import_export')"><span>📂</span> 导入导出</li>
+            </ul>
+        </div>
+        <div class="main-area">
+            <div class="header">
+                <div class="header-left">教授管理</div>
+                <div class="header-right">
+                    <span>管理员</span>
+                    <el-button size="small" type="danger" plain @click="logout">退出登录</el-button>
+                </div>
+            </div>
+            <div class="content">
+                <el-card shadow="never">
+                    <el-form :model="filters" inline>
+                        <el-form-item label="搜索">
+                            <el-input v-model="filters.search" placeholder="姓名/学校/方向" clearable @clear="search" @keyup.enter="search" style="width:200px" />
+                        </el-form-item>
+                        <el-form-item label="研究方向">
+                            <el-select v-model="filters.direction" placeholder="全部" clearable @change="search" style="width:150px" filterable>
+                                <el-option v-for="d in directions" :key="d" :label="d" :value="d" />
+                            </el-select>
+                        </el-form-item>
+                        <el-form-item label="学校">
+                            <el-input v-model="filters.university" placeholder="学校名称" clearable @clear="search" @keyup.enter="search" style="width:180px" />
+                        </el-form-item>
+                        <el-form-item label="QS排名">
+                            <el-input-number v-model="filters.qs_min" :min="0" :max="1000" placeholder="最低" style="width:100px" controls-position="right" />
+                            <span style="margin:0 8px">-</span>
+                            <el-input-number v-model="filters.qs_max" :min="0" :max="1000" placeholder="最高" style="width:100px" controls-position="right" />
+                        </el-form-item>
+                        <el-form-item>
+                            <el-button type="primary" @click="search">查询</el-button>
+                            <el-button @click="resetFilters">重置</el-button>
+                            <el-button type="success" @click="showAddDialog">+ 新增教授</el-button>
+                        </el-form-item>
+                    </el-form>
+                </el-card>
+
+                <el-card shadow="never" style="margin-top:16px">
+                    <el-table :data="list" stripe style="width:100%" v-loading="loading" @row-click="goDetail">
+                        <el-table-column type="index" label="#" width="50" />
+                        <el-table-column prop="name" label="姓名" min-width="120" />
+                        <el-table-column prop="title" label="职称" min-width="120" />
+                        <el-table-column prop="university" label="学校" min-width="180" show-overflow-tooltip />
+                        <el-table-column prop="research_direction" label="研究方向" width="120">
+                            <template #default="{row}">
+                                <el-tag size="small" v-if="row.research_direction" @click.stop="filterDirection(row.research_direction)" style="cursor:pointer">{{ row.research_direction }}</el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column prop="qs_ranking" label="QS排名" width="90" align="center" />
+                        <el-table-column prop="cooperation_count" label="合作次数" width="90" align="center" />
+                        <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
+                        <el-table-column label="操作" width="160" fixed="right">
+                            <template #default="{row}">
+                                <el-button size="small" type="primary" link @click.stop="goDetail(row)">详情</el-button>
+                                <el-button size="small" type="warning" link @click.stop="showEditDialog(row)">编辑</el-button>
+                                <el-button size="small" type="danger" link @click.stop="doDelete(row)">删除</el-button>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                    <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center">
+                        <span style="font-size:13px;color:#909399">共 {{ total }} 条</span>
+                        <el-pagination v-model:current-page="filters.page" :page-size="filters.page_size" :total="total" layout="prev,pager,next" @current-change="loadData" />
+                    </div>
+                </el-card>
+            </div>
+        </div>
+    </div>
+
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="700px" :close-on-click-modal="false">
+        <el-form :model="form" label-width="100px" v-loading="saving">
+            <el-row :gutter="16">
+                <el-col :span="12"><el-form-item label="姓名" required><el-input v-model="form.name" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="职称"><el-input v-model="form.title" /></el-form-item></el-col>
+            </el-row>
+            <el-row :gutter="16">
+                <el-col :span="12"><el-form-item label="学校"><el-input v-model="form.university" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="QS排名"><el-input-number v-model="form.qs_ranking" :min="0" :max="1000" style="width:100%" controls-position="right" /></el-form-item></el-col>
+            </el-row>
+            <el-row :gutter="16">
+                <el-col :span="12"><el-form-item label="邮箱"><el-input v-model="form.email" /></el-form-item></el-col>
+                <el-col :span="12"><el-form-item label="所在地"><el-input v-model="form.location" /></el-form-item></el-col>
+            </el-row>
+            <el-form-item label="个人主页"><el-input v-model="form.website" placeholder="https://" /></el-form-item>
+            <el-row :gutter="16">
+                <el-col :span="12">
+                    <el-form-item label="研究方向">
+                        <el-select v-model="form.research_direction" filterable allow-create default-first-option style="width:100%" placeholder="输入或选择">
+                            <el-option v-for="d in directionOptions" :key="d" :label="d" :value="d" />
+                        </el-select>
+                    </el-form-item>
+                </el-col>
+                <el-col :span="12"><el-form-item label="研究关键词"><el-input v-model="form.research_keywords" placeholder="逗号分隔" /></el-form-item></el-col>
+            </el-row>
+            <el-form-item label="备注"><el-input v-model="form.notes" type="textarea" :rows="2" /></el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="dialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+        </template>
+    </el-dialog>
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/element-plus/dist/index.full.min.js"></script>
+<script src="/static/app.js"></script>
+<script>
+    const { createApp, ref, reactive, onMounted } = Vue;
+    const app = createApp({
+        setup() {
+            if (!checkAuth()) return {};
+            const list = ref([]);
+            const total = ref(0);
+            const loading = ref(false);
+            const directions = ref([]);
+            const directionOptions = ref([]);
+            const dialogVisible = ref(false);
+            const dialogTitle = ref('新增教授');
+            const saving = ref(false);
+            const isEdit = ref(false);
+            const editId = ref(null);
+            const filters = reactive({ search: '', direction: '', university: '', qs_min: null, qs_max: null, page: 1, page_size: 50 });
+            const form = reactive({ name: '', title: '', university: '', email: '', website: '', location: '', qs_ranking: null, research_direction: '', research_keywords: '', notes: '' });
+
+            async function loadData() {
+                loading.value = true;
+                try {
+                    const res = await getApi('/professors', filters);
+                    list.value = res.items;
+                    total.value = res.total;
+                } catch (e) { console.error(e); }
+                loading.value = false;
+            }
+
+            async function loadDirections() {
+                try {
+                    directionOptions.value = await getApi('/directions/suggestions');
+                } catch (e) { console.error(e); }
+            }
+
+            function search() { filters.page = 1; loadData(); }
+            function resetFilters() {
+                filters.search = ''; filters.direction = ''; filters.university = '';
+                filters.qs_min = null; filters.qs_max = null; filters.page = 1;
+                search();
+            }
+            function filterDirection(d) { filters.direction = d; filters.page = 1; loadData(); }
+
+            function showAddDialog() {
+                isEdit.value = false; editId.value = null;
+                dialogTitle.value = '新增教授';
+                Object.assign(form, { name: '', title: '', university: '', email: '', website: '', location: '', qs_ranking: null, research_direction: '', research_keywords: '', notes: '' });
+                dialogVisible.value = true;
+            }
+
+            function showEditDialog(row) {
+                isEdit.value = true; editId.value = row.id;
+                dialogTitle.value = '编辑教授';
+                Object.assign(form, {
+                    name: row.name, title: row.title || '', university: row.university || '',
+                    email: row.email || '', website: row.website || '', location: row.location || '',
+                    qs_ranking: row.qs_ranking, research_direction: row.research_direction || '',
+                    research_keywords: row.research_keywords || '', notes: row.notes || '',
+                });
+                dialogVisible.value = true;
+            }
+
+            async function save() {
+                if (!form.name) { ElMessage.warning('请输入姓名'); return; }
+                saving.value = true;
+                try {
+                    if (isEdit.value) {
+                        await putApi(`/professors/${editId.value}`, form);
+                        ElMessage.success('更新成功');
+                    } else {
+                        await postApi('/professors', form);
+                        ElMessage.success('创建成功');
+                    }
+                    dialogVisible.value = false;
+                    loadData();
+                    loadDirections();
+                } catch (e) { console.error(e); }
+                saving.value = false;
+            }
+
+            async function doDelete(row) {
+                try {
+                    await ElMessageBox.confirm(`确定删除教授「${row.name}」？此操作将同时删除其所有合作记录。`, '确认删除', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' });
+                    await deleteApi(`/professors/${row.id}`);
+                    ElMessage.success('删除成功');
+                    loadData();
+                } catch (e) { /* cancelled */ }
+            }
+
+            function goDetail(row) {
+                window.location.href = `/pages/professor_detail?id=${row.id}`;
+            }
+
+            function goPage(name) { window.location.href = name ? `/pages/${name}` : '/'; }
+            function logout() { clearToken(); window.location.href = '/login'; }
+
+            onMounted(() => {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('direction')) filters.direction = params.get('direction');
+                loadData();
+                loadDirections();
+            });
+
+            return { list, total, loading, filters, directions, directionOptions, dialogVisible, dialogTitle, saving, form, search, resetFilters, showAddDialog, showEditDialog, save, doDelete, goDetail, goPage, logout, filterDirection };
+        }
+    });
+    app.use(ElementPlus);
+    app.mount('#app');
+</script>
+</body>
+</html>

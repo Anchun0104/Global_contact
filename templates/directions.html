@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>研究方向管理 - 外联教授数据库管理系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-title">📊 外联数据库</div>
+            <ul class="sidebar-menu">
+                <li @click="goPage('')"><span>📈</span> 仪表盘</li>
+                <li @click="goPage('professors')"><span>👨‍🏫</span> 教授管理</li>
+                <li @click="goPage('conferences')"><span>📅</span> 会议管理</li>
+                <li @click="goPage('cooperations')"><span>🤝</span> 合作记录</li>
+                <li class="active"><span>🏷️</span> 研究方向</li>
+                <li @click="goPage('import_export')"><span>📂</span> 导入导出</li>
+            </ul>
+        </div>
+        <div class="main-area">
+            <div class="header">
+                <div class="header-left">研究方向管理</div>
+                <div class="header-right">
+                    <span>管理员</span>
+                    <el-button size="small" type="danger" plain @click="logout">退出登录</el-button>
+                </div>
+            </div>
+            <div class="content">
+                <el-card shadow="never">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                        <span style="font-size:14px;color:#606266">研究方向用于教授和会议的领域匹配。共 {{ list.length }} 个方向</span>
+                        <div>
+                            <el-input v-model="newName" placeholder="输入新方向名称" style="width:200px;margin-right:8px" @keyup.enter="doAdd" />
+                            <el-button type="primary" @click="doAdd">新增</el-button>
+                        </div>
+                    </div>
+                    <el-table :data="list" stripe v-loading="loading">
+                        <el-table-column type="index" label="#" width="60" />
+                        <el-table-column prop="name" label="研究方向名称" min-width="200" />
+                        <el-table-column label="操作" width="100">
+                            <template #default="{row}">
+                                <el-button size="small" type="danger" link @click="doDelete(row)">删除</el-button>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                </el-card>
+
+                <el-card shadow="never" style="margin-top:16px">
+                    <template #header>提示</template>
+                    <div style="font-size:13px;color:#909399;line-height:1.8">
+                        <p>• 此处管理的是预定义研究方向列表，在新增教授或会议时也会自动记录新输入的方向</p>
+                        <p>• 删除研究方向前需确保没有教授或会议正在使用该方向</p>
+                        <p>• 研究方向用于「教授 - 会议」的领域匹配推荐</p>
+                    </div>
+                </el-card>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/element-plus/dist/index.full.min.js"></script>
+<script src="/static/app.js"></script>
+<script>
+    const { createApp, ref, onMounted } = Vue;
+    const app = createApp({
+        setup() {
+            if (!checkAuth()) return {};
+            const list = ref([]);
+            const loading = ref(false);
+            const newName = ref('');
+
+            async function loadData() {
+                loading.value = true;
+                try { list.value = await getApi('/directions'); } catch (e) { console.error(e); }
+                loading.value = false;
+            }
+
+            async function doAdd() {
+                const name = newName.value.trim();
+                if (!name) { ElMessage.warning('请输入方向名称'); return; }
+                try {
+                    await postApi('/directions', { name });
+                    ElMessage.success('新增成功');
+                    newName.value = '';
+                    loadData();
+                } catch (e) { console.error(e); }
+            }
+
+            async function doDelete(row) {
+                try {
+                    await ElMessageBox.confirm(`确定删除研究方向「${row.name}」？`, '确认删除', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' });
+                    await deleteApi(`/directions/${row.id}`);
+                    ElMessage.success('删除成功');
+                    loadData();
+                } catch (e) {}
+            }
+
+            function goPage(name) { window.location.href = name ? `/pages/${name}` : '/'; }
+            function logout() { clearToken(); window.location.href = '/login'; }
+
+            onMounted(() => { loadData(); });
+
+            return { list, loading, newName, doAdd, doDelete, goPage, logout };
+        }
+    });
+    app.use(ElementPlus);
+    app.mount('#app');
+</script>
+</body>
+</html>

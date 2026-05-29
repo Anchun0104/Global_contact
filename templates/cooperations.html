@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>合作记录 - 外联教授数据库管理系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-title">📊 外联数据库</div>
+            <ul class="sidebar-menu">
+                <li @click="goPage('')"><span>📈</span> 仪表盘</li>
+                <li @click="goPage('professors')"><span>👨‍🏫</span> 教授管理</li>
+                <li @click="goPage('conferences')"><span>📅</span> 会议管理</li>
+                <li class="active"><span>🤝</span> 合作记录</li>
+                <li @click="goPage('directions')"><span>🏷️</span> 研究方向</li>
+                <li @click="goPage('import_export')"><span>📂</span> 导入导出</li>
+            </ul>
+        </div>
+        <div class="main-area">
+            <div class="header">
+                <div class="header-left">合作记录</div>
+                <div class="header-right">
+                    <span>管理员</span>
+                    <el-button size="small" type="danger" plain @click="logout">退出登录</el-button>
+                </div>
+            </div>
+            <div class="content">
+                <el-card shadow="never">
+                    <el-form :model="filters" inline>
+                        <el-form-item label="教授">
+                            <el-select v-model="filters.professor_id" filterable clearable placeholder="选择教授" style="width:200px" @change="search">
+                                <el-option v-for="p in professors" :key="p.id" :label="p.name" :value="p.id" />
+                            </el-select>
+                        </el-form-item>
+                        <el-form-item label="会议">
+                            <el-select v-model="filters.conference_id" filterable clearable placeholder="选择会议" style="width:200px" @change="search">
+                                <el-option v-for="c in conferences" :key="c.id" :label="c.name" :value="c.id" />
+                            </el-select>
+                        </el-form-item>
+                        <el-form-item label="合作类型">
+                            <el-select v-model="filters.cooperation_type" clearable placeholder="全部" style="width:140px" @change="search">
+                                <el-option v-for="(label, val) in COOP_TYPE_LABELS" :key="val" :label="label" :value="val" />
+                            </el-select>
+                        </el-form-item>
+                        <el-form-item>
+                            <el-button @click="resetFilters">重置</el-button>
+                            <el-button type="success" @click="showAddDialog">+ 新增合作</el-button>
+                        </el-form-item>
+                    </el-form>
+                </el-card>
+
+                <el-card shadow="never" style="margin-top:16px">
+                    <el-table :data="list" stripe style="width:100%" v-loading="loading">
+                        <el-table-column type="index" label="#" width="50" />
+                        <el-table-column label="教授" min-width="150">
+                            <template #default="{row}"><a :href="'/pages/professor_detail?id='+row.professor_id" style="color:#409eff">{{ row.professor_name }}</a></template>
+                        </el-table-column>
+                        <el-table-column label="会议" min-width="200" show-overflow-tooltip>
+                            <template #default="{row}"><a :href="'/pages/conference_detail?id='+row.conference_id" style="color:#409eff">{{ row.conference_name }}</a></template>
+                        </el-table-column>
+                        <el-table-column prop="sub_conference_name" label="分会场" min-width="150" />
+                        <el-table-column label="合作类型" width="140">
+                            <template #default="{row}">
+                                <el-tag :type="typeTag(row.cooperation_type)" size="small">{{ COOP_TYPE_LABELS[row.cooperation_type] || row.cooperation_type }}</el-tag>
+                            </template>
+                        </el-table-column>
+                        <el-table-column prop="notes" label="备注" min-width="150" show-overflow-tooltip />
+                        <el-table-column label="操作" width="100" fixed="right">
+                            <template #default="{row}">
+                                <el-button size="small" type="danger" link @click.stop="doDelete(row)">删除</el-button>
+                            </template>
+                        </el-table-column>
+                    </el-table>
+                    <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center">
+                        <span style="font-size:13px;color:#909399">共 {{ total }} 条</span>
+                        <el-pagination v-model:current-page="filters.page" :page-size="filters.page_size" :total="total" layout="prev,pager,next" @current-change="loadData" />
+                    </div>
+                </el-card>
+            </div>
+        </div>
+    </div>
+
+    <el-dialog v-model="dialogVisible" title="新增合作记录" width="550px">
+        <el-form :model="form" label-width="100px">
+            <el-form-item label="教授" required>
+                <el-select v-model="form.professor_id" filterable style="width:100%" placeholder="搜索选择教授">
+                    <el-option v-for="p in professors" :key="p.id" :label="`${p.name} (${p.university || ''})`" :value="p.id" />
+                </el-select>
+            </el-form-item>
+            <el-form-item label="会议" required>
+                <el-select v-model="form.conference_id" filterable style="width:100%" placeholder="搜索选择会议" @change="onConfChange">
+                    <el-option v-for="c in conferences" :key="c.id" :label="c.name" :value="c.id" />
+                </el-select>
+            </el-form-item>
+            <el-form-item label="分会场">
+                <el-select v-model="form.sub_conference_id" filterable clearable style="width:100%" placeholder="可选，选择具体分会场">
+                    <el-option v-for="s in availableSubs" :key="s.id" :label="s.name" :value="s.id" />
+                </el-select>
+            </el-form-item>
+            <el-form-item label="合作类型" required>
+                <el-select v-model="form.cooperation_type" style="width:100%">
+                    <el-option v-for="(label, val) in COOP_TYPE_LABELS" :key="val" :label="label" :value="val" />
+                </el-select>
+            </el-form-item>
+            <el-form-item label="备注"><el-input v-model="form.notes" type="textarea" :rows="2" /></el-form-item>
+        </el-form>
+        <template #footer>
+            <el-button @click="dialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+        </template>
+    </el-dialog>
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/element-plus/dist/index.full.min.js"></script>
+<script src="/static/app.js"></script>
+<script>
+    const { createApp, ref, reactive, onMounted } = Vue;
+    const app = createApp({
+        setup() {
+            if (!checkAuth()) return {};
+            const list = ref([]);
+            const total = ref(0);
+            const loading = ref(false);
+            const professors = ref([]);
+            const conferences = ref([]);
+            const availableSubs = ref([]);
+            const dialogVisible = ref(false);
+            const saving = ref(false);
+            const filters = reactive({ professor_id: null, conference_id: null, cooperation_type: '', page: 1, page_size: 50 });
+            const form = reactive({ professor_id: null, conference_id: null, sub_conference_id: null, cooperation_type: 'keynote', notes: '' });
+
+            async function loadData() {
+                loading.value = true;
+                try {
+                    const res = await getApi('/cooperations', filters);
+                    list.value = res.items;
+                    total.value = res.total;
+                } catch (e) { console.error(e); }
+                loading.value = false;
+            }
+
+            async function loadOptions() {
+                try {
+                    const pRes = await getApi('/professors', { page_size: 500 });
+                    professors.value = pRes.items;
+                    const cRes = await getApi('/conferences', { page_size: 200 });
+                    conferences.value = cRes.items;
+                } catch (e) {}
+            }
+
+            function search() { filters.page = 1; loadData(); }
+            function resetFilters() { filters.professor_id = null; filters.conference_id = null; filters.cooperation_type = ''; filters.page = 1; loadData(); }
+
+            function showAddDialog() {
+                Object.assign(form, { professor_id: null, conference_id: null, sub_conference_id: null, cooperation_type: 'keynote', notes: '' });
+                availableSubs.value = [];
+                dialogVisible.value = true;
+            }
+
+            async function onConfChange() {
+                availableSubs.value = [];
+                form.sub_conference_id = null;
+                if (form.conference_id) {
+                    try {
+                        const subs = await getApi('/subconferences', { conference_id: form.conference_id });
+                        availableSubs.value = subs.filter(s => !s.assigned_professor);
+                    } catch (e) {}
+                }
+            }
+
+            async function save() {
+                if (!form.professor_id) { ElMessage.warning('请选择教授'); return; }
+                if (!form.conference_id) { ElMessage.warning('请选择会议'); return; }
+                saving.value = true;
+                try {
+                    await postApi('/cooperations', form);
+                    ElMessage.success('创建成功');
+                    dialogVisible.value = false;
+                    loadData();
+                } catch (e) {}
+                saving.value = false;
+            }
+
+            async function doDelete(row) {
+                try {
+                    await ElMessageBox.confirm('确定删除此合作记录？', '确认删除', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' });
+                    await deleteApi(`/cooperations/${row.id}`);
+                    ElMessage.success('删除成功');
+                    loadData();
+                } catch (e) {}
+            }
+
+            function typeTag(t) { const m = { keynote: 'danger', committee: 'primary', session_chair: 'warning', general_chair: 'success', editor: 'info' }; return m[t] || ''; }
+            function goPage(name) { window.location.href = name ? `/pages/${name}` : '/'; }
+            function logout() { clearToken(); window.location.href = '/login'; }
+
+            onMounted(() => { loadData(); loadOptions(); });
+
+            return { list, total, loading, filters, professors, conferences, availableSubs, dialogVisible, saving, form, search, resetFilters, showAddDialog, onConfChange, save, doDelete, typeTag, goPage, logout, COOP_TYPE_LABELS };
+        }
+    });
+    app.use(ElementPlus);
+    app.mount('#app');
+</script>
+</body>
+</html>
