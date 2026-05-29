@@ -26,13 +26,15 @@ Base.metadata.create_all(bind=engine)
 
 
 def run_migrations():
-    inspector = inspect(engine)
-    columns = [c["name"] for c in inspector.get_columns("users")]
-    if "display_name" not in columns:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN display_name VARCHAR(100)"))
-            conn.execute(text("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1"))
-            conn.commit()
+    db_url = os.getenv("DATABASE_URL", "")
+    if db_url.startswith("sqlite"):
+        inspector = inspect(engine)
+        columns = [c["name"] for c in inspector.get_columns("users")]
+        if "display_name" not in columns:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN display_name VARCHAR(100)"))
+                conn.execute(text("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1"))
+                conn.commit()
 
 from routers import (
     auth as auth_router,
